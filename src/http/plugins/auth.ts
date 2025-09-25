@@ -23,9 +23,7 @@ declare module 'fastify' {
 }
 
 type RoleRequirement = 'guest' | 'admin';
-
 type JwtVerifier = (token: string | null) => Promise<AuthContext>;
-
 const ROLE_CLAIM_CANDIDATES = [
   'roles',
   'role',
@@ -33,7 +31,6 @@ const ROLE_CLAIM_CANDIDATES = [
   'scope',
   'https://schemas.dev/roles',
 ] as const;
-
 const buildJwtVerifier = (
   app: FastifyInstance,
 ): { verifier: JwtVerifier; authDisabled: boolean } => {
@@ -44,7 +41,6 @@ const buildJwtVerifier = (
       if (!token) {
         throw httpError(401, 'Missing Authorization header');
       }
-
       const { payload } = await jwtVerify(token, jwks, {
         audience: env.AUTH_AUDIENCE,
         issuer: env.AUTH_ISSUER,
@@ -58,14 +54,12 @@ const buildJwtVerifier = (
         claims: payload,
       };
     };
-
     return { verifier, authDisabled: false };
   }
 
   app.log.warn(
     'AUTH_JWKS_URL/AUTH_AUDIENCE/AUTH_ISSUER missing; falling back to permissive guest mode. Do not use in production.',
   );
-
   return {
     verifier: () =>
       Promise.resolve({
@@ -143,7 +137,6 @@ const ensureRole = async (
 
   request.auth = context;
 };
-
 const extractBearerToken = (header: string): string => {
   const [scheme, token] = header.split(' ');
   if (!token || scheme.toLowerCase() !== 'bearer') {

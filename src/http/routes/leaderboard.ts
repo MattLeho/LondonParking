@@ -2,7 +2,6 @@ import type { FastifyPluginCallback } from 'fastify';
 import { z } from 'zod';
 
 import { httpError } from '../../lib/http-error.js';
-
 const isoDate = z.string().transform((value, ctx) => {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) {
@@ -15,7 +14,6 @@ const isoDate = z.string().transform((value, ctx) => {
 
   return new Date(timestamp);
 });
-
 const baseQuerySchema = z
   .object({
     borough: z.string().min(1).optional(),

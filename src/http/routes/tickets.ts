@@ -3,7 +3,6 @@ import { z } from 'zod';
 
 import { parseBbox } from '../../lib/bounds.js';
 import { httpError } from '../../lib/http-error.js';
-
 const isoDate = z.string().transform((value, ctx) => {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) {
