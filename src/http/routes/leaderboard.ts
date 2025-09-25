@@ -9,6 +9,7 @@ import {
   fetchStreetLeaderboard,
 } from '../../services/leaderboard.js';
 
+
 const isoDate = z.string().transform((value, ctx) => {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) {
@@ -37,6 +38,7 @@ const baseQuerySchema = z
       });
     }
   });
+
 
 export const registerLeaderboardRoutes: FastifyPluginCallback = (app, _opts, done) => {
   app.get(

@@ -26,6 +26,7 @@ type RoleRequirement = 'guest' | 'admin';
 
 type JwtVerifier = (token: string | null) => Promise<AuthContext>;
 
+
 const ROLE_CLAIM_CANDIDATES = [
   'roles',
   'role',
@@ -33,7 +34,6 @@ const ROLE_CLAIM_CANDIDATES = [
   'scope',
   'https://schemas.dev/roles',
 ] as const;
-
 const buildJwtVerifier = (
   app: FastifyInstance,
 ): { verifier: JwtVerifier; authDisabled: boolean } => {
