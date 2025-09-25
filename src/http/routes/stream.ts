@@ -1,5 +1,4 @@
 import type { FastifyPluginCallback } from 'fastify';
-
 import { onStreamEvent, type StreamEventName } from '../../lib/events.js';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
