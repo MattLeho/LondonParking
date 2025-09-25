@@ -1,0 +1,55 @@
+// Prisma schema aligned with PostGIS-enabled PostgreSQL database.
+// PostGIS types require a custom extension; use `Unsupported` placeholder to map geography columns.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model PcnTicket {
+  id         String   @id
+  source     String
+  borough    String
+  issuedAt   DateTime @map("issued_at")
+  code       String?  @map("code")
+  desc       String?  @map("desc")
+  level      String?
+  band       String?
+  estMinP    Int?     @map("est_min_p")
+  estMaxP    Int?     @map("est_max_p")
+  street     String?
+  accuracy   String?
+  geom       Unsupported("geography(Point,4326)")?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("pcn_ticket")
+  @@index([issuedAt], map: "pcn_ticket_issued_at_idx")
+}
+
+model Patrol {
+  id        String   @id @default(uuid())
+  label     String
+  day       DateTime
+  borough   String
+  firstSeen DateTime @map("first_seen")
+  lastSeen  DateTime @map("last_seen")
+  tickets   Int
+  estMinP   Int      @map("est_min_p")
+  estMaxP   Int      @map("est_max_p")
+  centroid  Unsupported("geography(Point,4326)")?
+
+  @@map("patrol")
+  @@index([day], map: "patrol_day_idx")
+}
+
+model IngestWatermark {
+  source      String   @id
+  lastIssued  DateTime? @map("last_issued_at")
+  lastSeenAt  DateTime  @default(now()) @map("last_seen_at")
+
+  @@map("ingest_watermark")
+}
