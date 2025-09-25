@@ -15,6 +15,10 @@ const envSchema = z
     AUTH_ISSUER: z.url().optional(),
     ADMIN_ROLE: z.string().default('admin'),
     GUEST_ROLE: z.string().default('guest'),
+    LEADERBOARD_DAILY_SECRET: z.string().min(16).default('local-daily-secret'),
+    REDIS_URL: z.url().optional(),
+    OTEL_EXPORTER_OTLP_ENDPOINT: z.url().optional(),
+    SENTRY_DSN: z.url().optional(),
   })
   .superRefine((values, ctx) => {
     if (values.NODE_ENV === 'production') {
@@ -27,6 +31,22 @@ const envSchema = z
           message:
             'Auth configuration incomplete. Provide AUTH_JWKS_URL, AUTH_AUDIENCE, and AUTH_ISSUER in production environments.',
           path: ['AUTH_JWKS_URL'],
+        });
+      }
+
+      if (!values.DATABASE_URL) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'DATABASE_URL must be provided in production.',
+          path: ['DATABASE_URL'],
+        });
+      }
+
+      if (!values.REDIS_URL) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'REDIS_URL must be provided in production.',
+          path: ['REDIS_URL'],
         });
       }
     }

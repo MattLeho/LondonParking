@@ -2,6 +2,7 @@ import type { FastifyPluginCallback } from 'fastify';
 import { z } from 'zod';
 
 import { httpError } from '../../lib/http-error.js';
+import { enqueueIngestJob } from '../../etl/ingest-queue.js';
 
 const paramsSchema = z.object({
   source: z.string().min(1),
@@ -11,7 +12,7 @@ export const registerAdminRoutes: FastifyPluginCallback = (app, _opts, done) => 
   app.post(
     '/api/admin/ingest/:source',
     { preHandler: app.requireAdmin, logLevel: 'warn' },
-    (request) => {
+    async (request) => {
       const parsed = paramsSchema.safeParse(request.params);
       if (!parsed.success) {
         app.log.debug({ errors: parsed.error.issues }, 'invalid admin ingest params');
@@ -20,10 +21,13 @@ export const registerAdminRoutes: FastifyPluginCallback = (app, _opts, done) => 
 
       const { source } = parsed.data;
 
+      const enqueueResult = await enqueueIngestJob(source);
+
       return {
-        status: 'accepted',
+        status: enqueueResult.enqueued ? 'accepted' : 'skipped',
         source,
         queuedAt: new Date().toISOString(),
+        detail: enqueueResult.enqueued ? { jobId: enqueueResult.jobId } : { reason: enqueueResult.reason },
       };
     },
   );

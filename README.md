@@ -1,15 +1,26 @@
-# LondonParking API Skeleton
 
-This repository contains the first slice of the "London PCN Live Map + Anonymised Officer Leaderboard" stack. It exposes a Fastify-based HTTP API with strongly typed request validation, role-aware guards, and stubbed responses that mirror the target contract for the eventual PostGIS-backed implementation.
+# LondonParking API Platform
+
+This repository implements the backend services for the "London PCN Live Map + Anonymised Officer Leaderboard" experience. It
+combines a Fastify HTTP server, Prisma/PostgreSQL access layer, BullMQ-powered ETL workers, and a server-sent events fan-out to
+serve live parking ticket activity across participating London boroughs.
 
 ## What is included?
 
-- **Fastify 5 + TypeScript** server configured with Helmet, CORS, and rate limiting.
-- **Runtime environment validation** via [`zod`](https://github.com/colinhacks/zod) to guarantee configuration safety.
-- **JWT / JWKS authentication scaffold** that enforces role-based access (`guest`, `admin`) and degrades gracefully in local development.
-- **API endpoints** for tickets, leaderboards, admin ingestion triggers, health checks, and a server-sent events stream.
-- **Prisma schema** that matches the target PostGIS data model for PCN tickets, patrol clusters, and ingestion watermarks.
-- **Tooling**: ESLint (strict TypeScript profile), Prettier, and build scripts ready for CI.
+- **Fastify 5 + TypeScript** HTTP server with Helmet, CORS, sensible defaults, and per-route rate limiting.
+- **Runtime environment validation** via [`zod`](https://github.com/colinhacks/zod) covering auth, database, Redis, and
+  observability configuration.
+- **JWT / JWKS authentication guard** enforcing `guest` and `admin` RBAC roles while providing a permissive fallback for
+  anonymous development.
+- **PostGIS-ready Prisma layer** with ticket, patrol, and ingestion watermark models, plus raw spatial queries for viewport
+  filtering and spatiotemporal clustering.
+- **Officer leaderboard sequencing** that groups tickets by ≤150 m proximity and ≤12 minute windows, applying deterministic daily
+  salts for privacy-preserving "Parking Officer N" labelling.
+- **Redis + BullMQ ingestion pipeline** (Camden fixture source provided) together with an admin trigger endpoint and worker
+  process entry point.
+- **Server-sent events broadcaster** for ticket, leaderboard, patrol, and heartbeat updates with subscription helpers.
+- **Tooling**: ESLint (strict TypeScript), Prettier, Prisma generator, and TypeScript build scripts ready for CI usage.
+
 
 ## Getting started
 
@@ -19,7 +30,14 @@ This repository contains the first slice of the "London PCN Live Map + Anonymise
    npm install
    ```
 
-2. Create an environment file (e.g. `.env`) with the following variables. JWKS settings are required in production but optional for local development:
+2. Provision services:
+
+   - PostgreSQL 16 with PostGIS 3 extension enabled.
+   - Redis 7 for BullMQ job queueing and pub/sub fan-out.
+
+3. Create an environment file (e.g. `.env`) with the following variables. JWKS settings are required in production but optional
+   for local development:
+
 
    ```bash
    NODE_ENV=development
@@ -30,49 +48,70 @@ This repository contains the first slice of the "London PCN Live Map + Anonymise
    # AUTH_ISSUER=https://your-auth-domain/
    ADMIN_ROLE=admin
    GUEST_ROLE=guest
-   # DATABASE_URL=postgresql://postgres:postgres@localhost:5432/londonparking
+   LEADERBOARD_DAILY_SECRET=change-me-daily
+   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/londonparking
+   REDIS_URL=redis://localhost:6379
    ```
 
-3. Start the development server:
+4. Generate the Prisma client after adjusting the schema (run automatically by `npm run prisma`):
 
    ```bash
-   npm run dev
+   npm run prisma
    ```
 
-   The API listens on `http://localhost:3000` by default.
+5. Start the development API server:
 
-4. Build the project for production:
+6. In a second terminal start the ingestion worker (requires Redis):
 
    ```bash
-   npm run build
+   npm run dev:worker
    ```
 
-5. Run linting:
+7. Run the lint and build pipelines:
 
    ```bash
    npm run lint
+   npm run build
+
    ```
 
 ## API surface
 
-The current implementation stubs responses but adheres to the contract defined in the technical blueprint.
+The server currently exposes the read-only contract described in the technical blueprint. Tickets and leaderboard responses are
+backed by SQL queries and anonymisation routines, while the Camden ETL worker hydrates a set of fixture tickets to demonstrate the
+end-to-end flow.
+
 
 | Method | Path | Description | Auth |
 | ------ | ---- | ----------- | ---- |
 | `GET` | `/api/healthz` | Liveness probe | none |
-| `GET` | `/api/tickets?bbox=WEST,SOUTH,EAST,NORTH&since&until&limit` | Returns filtered PCN tickets | `guest` |
-| `GET` | `/api/leaderboard/officers?borough&since&until` | Officer leaderboard (synthetic labels) | `guest` |
-| `GET` | `/api/leaderboard/streets?borough&since&until` | Street fallback leaderboard | `guest` |
-| `GET` | `/api/stream` | Server-sent events channel (heartbeats + placeholders) | `guest` |
-| `POST` | `/api/admin/ingest/:source` | Trigger an ingestion job for a borough/source | `admin` |
+| `GET` | `/api/tickets?bbox=WEST,SOUTH,EAST,NORTH&since&until&limit` | Viewport-filtered PCN tickets (PostGIS spatial query) | `guest` |
+| `GET` | `/api/leaderboard/officers?borough&since&until` | Officer leaderboard (daily salted spatiotemporal sequences) | `guest` |
+| `GET` | `/api/leaderboard/streets?borough&since&until` | Street-level fallback leaderboard | `guest` |
+| `GET` | `/api/stream` | Server-sent events channel (ticket, leaderboard, patrol, heartbeat) | `guest` |
+| `POST` | `/api/admin/ingest/:source` | Enqueue an ETL ingestion job via BullMQ | `admin` |
 
-Responses include placeholder data today; wiring to PostGIS, Redis, and worker pipelines will be layered on during subsequent phases.
+## Data flow highlights
+
+- `src/services/tickets.ts` issues raw SQL against `pcn_ticket` using `ST_MakeEnvelope` bounding boxes and temporal filters.
+- `src/services/leaderboard.ts` groups tickets into patrol sequences using haversine distance and time thresholds, hashes the
+  grouping with a daily secret, and emits ranked officer labels plus street aggregates.
+- `src/etl/workers/sources/camden.ts` seeds the database with fixture Camden tickets and updates ingestion watermarks. Additional
+  boroughs can be added by extending the `sources` map in `src/etl/workers/index.ts`.
+- `src/lib/events.ts` and `src/http/routes/stream.ts` implement the SSE dispatcher and subscription lifecycle.
+
+## Background workers
+
+- `npm run worker` starts a BullMQ worker in production mode, processing ingestion jobs and emitting SSE notifications when new
+  tickets arrive.
+- Workers require `REDIS_URL` to be defined; the process exits early with a helpful error when Redis is absent.
 
 ## Development roadmap
 
-- Replace fixtures with Prisma/PostGIS queries and Redis-backed streaming events.
-- Add borough-specific ETL workers and BullMQ scheduling.
-- Introduce automated tests (unit, contract, e2e) once the data layer is connected.
+- Replace the Camden fixtures with real borough ETL integrations and extend the `sources` catalogue.
+- Publish patrol events and derived leaderboard deltas through the SSE channel and an eventual Redis pub/sub fan-out.
+- Add automated tests (unit, contract, e2e) once Postgres/Redis Testcontainers are wired into the toolchain.
+
 - Wire up observability (OpenTelemetry, Prometheus, Sentry) per the blueprint.
 
 ## License

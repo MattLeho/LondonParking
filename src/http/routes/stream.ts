@@ -1,15 +1,11 @@
 import type { FastifyPluginCallback } from 'fastify';
+import { onStreamEvent, type StreamEventName } from '../../lib/events.js';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
-type StreamEvent = {
-  event: string;
-  data: Record<string, unknown> | string;
-};
-
-const formatEvent = (event: StreamEvent): string => {
-  const payload = typeof event.data === 'string' ? event.data : JSON.stringify(event.data);
-  return `event: ${event.event}\ndata: ${payload}\n\n`;
+const formatEvent = (event: StreamEventName, data: Record<string, unknown> | string): string => {
+  const payload = typeof data === 'string' ? data : JSON.stringify(data);
+  return `event: ${event}\ndata: ${payload}\n\n`;
 };
 
 export const registerStreamRoutes: FastifyPluginCallback = (app, _opts, done) => {
@@ -24,19 +20,28 @@ export const registerStreamRoutes: FastifyPluginCallback = (app, _opts, done) =>
         'X-Accel-Buffering': 'no',
       });
       reply.hijack();
-
-      const send = (event: StreamEvent) => {
-        reply.raw.write(formatEvent(event));
+      const send = (event: StreamEventName, data: Record<string, unknown> | string) => {
+        reply.raw.write(formatEvent(event, data));
       };
 
-      send({ event: 'welcome', data: { message: 'connected', timestamp: new Date().toISOString() } });
+      send('heartbeat', { timestamp: new Date().toISOString() });
+
+      const unsubscribers = (['ticket', 'patrol', 'leaderboard'] satisfies StreamEventName[]).map((event) =>
+        onStreamEvent(event, (payload) => {
+          send(event, payload);
+        }),
+      );
 
       const heartbeat = setInterval(() => {
-        send({ event: 'heartbeat', data: {} });
+        send('heartbeat', { timestamp: new Date().toISOString() });
       }, HEARTBEAT_INTERVAL_MS);
 
       const close = () => {
         clearInterval(heartbeat);
+        unsubscribers.forEach((unsubscribe) => {
+          unsubscribe();
+        });
+
         request.raw.off('close', close);
         request.raw.off('error', close);
       };

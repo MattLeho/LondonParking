@@ -11,6 +11,7 @@ import registerHealthRoutes from './http/routes/health.js';
 import registerLeaderboardRoutes from './http/routes/leaderboard.js';
 import registerStreamRoutes from './http/routes/stream.js';
 import registerTicketRoutes from './http/routes/tickets.js';
+import './etl/workers/index.js';
 
 const buildServer = () => {
   const app = Fastify({

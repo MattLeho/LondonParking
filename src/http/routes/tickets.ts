@@ -3,6 +3,9 @@ import { z } from 'zod';
 
 import { parseBbox } from '../../lib/bounds.js';
 import { httpError } from '../../lib/http-error.js';
+import { prisma } from '../../lib/prisma.js';
+import { fetchTickets } from '../../services/tickets.js';
+
 const isoDate = z.string().transform((value, ctx) => {
   const timestamp = Date.parse(value);
   if (Number.isNaN(timestamp)) {
@@ -44,58 +47,6 @@ const querySchema = z
     }
   });
 
-type TicketRecord = {
-  id: string;
-  issuedAt: Date;
-  lat: number;
-  lon: number;
-  borough: string;
-  source: string;
-  street: string | null;
-  contravention: string;
-  accuracy: 'kerbside' | 'approximate' | 'unknown';
-  estMinP: number;
-  estMaxP: number;
-};
-
-const TICKET_FIXTURES: TicketRecord[] = [
-  {
-    id: 'camden-2024-0001',
-    issuedAt: new Date('2024-02-01T08:12:00Z'),
-    lat: 51.54123,
-    lon: -0.14012,
-    borough: 'Camden',
-    source: 'camden-open-data',
-    street: 'Camden High St',
-    contravention: 'Parked in a restricted street during prescribed hours',
-    accuracy: 'kerbside',
-    estMinP: 6000,
-    estMaxP: 13000,
-  },
-  {
-    id: 'westminster-2024-0002',
-    issuedAt: new Date('2024-02-01T09:45:00Z'),
-    lat: 51.51211,
-    lon: -0.12763,
-    borough: 'Westminster',
-    source: 'westminster-open-data',
-    street: 'Strand',
-    contravention: 'Parked without clearly displaying a valid pay & display ticket',
-    accuracy: 'approximate',
-    estMinP: 4000,
-    estMaxP: 8000,
-  },
-];
-
-const withinBbox = (bbox: ReturnType<typeof parseBbox>, ticket: TicketRecord) => {
-  return (
-    ticket.lon >= bbox.west &&
-    ticket.lon <= bbox.east &&
-    ticket.lat >= bbox.south &&
-    ticket.lat <= bbox.north
-  );
-};
-
 export const registerTicketRoutes: FastifyPluginCallback = (app, _opts, done) => {
   app.get(
     '/api/tickets',
@@ -103,7 +54,7 @@ export const registerTicketRoutes: FastifyPluginCallback = (app, _opts, done) =>
       preHandler: app.requireGuest,
       logLevel: 'warn',
     },
-    (request) => {
+    async (request) => {
       const parseResult = querySchema.safeParse(request.query);
       if (!parseResult.success) {
         app.log.debug({ errors: parseResult.error.issues }, 'invalid ticket query parameters');
@@ -112,39 +63,27 @@ export const registerTicketRoutes: FastifyPluginCallback = (app, _opts, done) =>
 
       const { bbox, since, until, limit } = parseResult.data;
 
-      const filtered = TICKET_FIXTURES.filter((ticket) => {
-        if (!withinBbox(bbox, ticket)) {
-          return false;
-        }
+      const rows = await fetchTickets(prisma, { bbox, since, until, limit });
 
-        if (since && ticket.issuedAt < since) {
-          return false;
-        }
-
-        if (until && ticket.issuedAt > until) {
-          return false;
-        }
-
-        return true;
-      })
-        .sort((a, b) => b.issuedAt.getTime() - a.issuedAt.getTime())
-        .slice(0, limit)
-        .map((ticket) => ({
-          id: ticket.id,
-          issuedAt: ticket.issuedAt.toISOString(),
-          borough: ticket.borough,
-          source: ticket.source,
-          location: { lat: ticket.lat, lon: ticket.lon },
-          street: ticket.street,
-          contravention: ticket.contravention,
-          accuracy: ticket.accuracy,
-          estimatedPenaltyPence: { min: ticket.estMinP, max: ticket.estMaxP },
-        }));
+      const data = rows.map((ticket) => ({
+        id: ticket.id,
+        issuedAt: ticket.issuedAt.toISOString(),
+        borough: ticket.borough,
+        source: ticket.source,
+        location: { lat: ticket.lat, lon: ticket.lon },
+        street: ticket.street,
+        contravention: ticket.contravention,
+        accuracy: ticket.accuracy,
+        estimatedPenaltyPence: {
+          min: ticket.estMinP ?? 0,
+          max: ticket.estMaxP ?? 0,
+        },
+      }));
 
       return {
-        data: filtered,
+        data,
         meta: {
-          count: filtered.length,
+          count: data.length,
           limit,
           bbox,
           since: since?.toISOString() ?? null,
