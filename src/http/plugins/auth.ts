@@ -23,9 +23,7 @@ declare module 'fastify' {
 }
 
 type RoleRequirement = 'guest' | 'admin';
-
-type JwtVerifier = (token: string) => Promise<AuthContext>;
-
+type JwtVerifier = (token: string | null) => Promise<AuthContext>;
 const ROLE_CLAIM_CANDIDATES = [
   'roles',
   'role',
@@ -33,12 +31,16 @@ const ROLE_CLAIM_CANDIDATES = [
   'scope',
   'https://schemas.dev/roles',
 ] as const;
-
-const buildJwtVerifier = (app: FastifyInstance): JwtVerifier => {
+const buildJwtVerifier = (
+  app: FastifyInstance,
+): { verifier: JwtVerifier; authDisabled: boolean } => {
   if (env.AUTH_JWKS_URL && env.AUTH_AUDIENCE && env.AUTH_ISSUER) {
     const jwks = createRemoteJWKSet(new URL(env.AUTH_JWKS_URL));
 
-    return async (token: string) => {
+    const verifier: JwtVerifier = async (token) => {
+      if (!token) {
+        throw httpError(401, 'Missing Authorization header');
+      }
       const { payload } = await jwtVerify(token, jwks, {
         audience: env.AUTH_AUDIENCE,
         issuer: env.AUTH_ISSUER,
@@ -52,18 +54,21 @@ const buildJwtVerifier = (app: FastifyInstance): JwtVerifier => {
         claims: payload,
       };
     };
+    return { verifier, authDisabled: false };
   }
 
   app.log.warn(
     'AUTH_JWKS_URL/AUTH_AUDIENCE/AUTH_ISSUER missing; falling back to permissive guest mode. Do not use in production.',
   );
-
-  return () =>
-    Promise.resolve({
-      subject: null,
-      roles: new Set([env.GUEST_ROLE]),
-      claims: {},
-    });
+  return {
+    verifier: () =>
+      Promise.resolve({
+        subject: null,
+        roles: new Set([env.GUEST_ROLE]),
+        claims: {},
+      }),
+    authDisabled: true,
+  };
 };
 
 const extractRoles = (payload: JWTPayload): Set<string> => {
@@ -88,15 +93,35 @@ const ensureRole = async (
   _reply: FastifyReply,
   verifier: JwtVerifier,
   requirement: RoleRequirement,
+  authDisabled: boolean,
 ): Promise<void> => {
-  const token = extractBearerToken(request);
   let context: AuthContext;
 
-  try {
-    context = await verifier(token);
-  } catch (error) {
-    request.log.warn({ err: error }, 'token verification failed');
-    throw httpError(401, 'Invalid authorization token');
+  if (authDisabled) {
+    context = await verifier(null);
+  } else {
+    const header = request.headers.authorization;
+
+    if (!header) {
+      if (requirement === 'guest') {
+        context = {
+          subject: null,
+          roles: new Set([env.GUEST_ROLE]),
+          claims: {},
+        };
+      } else {
+        throw httpError(401, 'Missing Authorization header');
+      }
+    } else {
+      const token = extractBearerToken(header);
+
+      try {
+        context = await verifier(token);
+      } catch (error) {
+        request.log.warn({ err: error }, 'token verification failed');
+        throw httpError(401, 'Invalid authorization token');
+      }
+    }
   }
 
   if (requirement === 'guest') {
@@ -112,13 +137,7 @@ const ensureRole = async (
 
   request.auth = context;
 };
-
-const extractBearerToken = (request: FastifyRequest): string => {
-  const header = request.headers.authorization;
-  if (!header) {
-    throw httpError(401, 'Missing Authorization header');
-  }
-
+const extractBearerToken = (header: string): string => {
   const [scheme, token] = header.split(' ');
   if (!token || scheme.toLowerCase() !== 'bearer') {
     throw httpError(401, 'Authorization header must be a Bearer token');
@@ -128,11 +147,11 @@ const extractBearerToken = (request: FastifyRequest): string => {
 };
 
 export const authPlugin = fp((app) => {
-  const verifier = buildJwtVerifier(app);
+  const { verifier, authDisabled } = buildJwtVerifier(app);
 
   const makeHandler = (requirement: RoleRequirement): preHandlerHookHandler => {
     return async (request, reply) => {
-      await ensureRole(request, reply, verifier, requirement);
+      await ensureRole(request, reply, verifier, requirement, authDisabled);
     };
   };
 
