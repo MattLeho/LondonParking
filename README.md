@@ -21,7 +21,6 @@ serve live parking ticket activity across participating London boroughs.
 - **Server-sent events broadcaster** for ticket, leaderboard, patrol, and heartbeat updates with subscription helpers.
 - **Tooling**: ESLint (strict TypeScript), Prettier, Prisma generator, and TypeScript build scripts ready for CI usage.
 
-
 ## Getting started
 
 1. Install dependencies:
@@ -37,7 +36,6 @@ serve live parking ticket activity across participating London boroughs.
 
 3. Create an environment file (e.g. `.env`) with the following variables. JWKS settings are required in production but optional
    for local development:
-
 
    ```bash
    NODE_ENV=development
@@ -61,6 +59,10 @@ serve live parking ticket activity across participating London boroughs.
 
 5. Start the development API server:
 
+   ```bash
+   npm run dev
+   ```
+
 6. In a second terminal start the ingestion worker (requires Redis):
 
    ```bash
@@ -72,7 +74,6 @@ serve live parking ticket activity across participating London boroughs.
    ```bash
    npm run lint
    npm run build
-
    ```
 
 ## API surface
@@ -80,7 +81,6 @@ serve live parking ticket activity across participating London boroughs.
 The server currently exposes the read-only contract described in the technical blueprint. Tickets and leaderboard responses are
 backed by SQL queries and anonymisation routines, while the Camden ETL worker hydrates a set of fixture tickets to demonstrate the
 end-to-end flow.
-
 
 | Method | Path | Description | Auth |
 | ------ | ---- | ----------- | ---- |
@@ -111,7 +111,6 @@ end-to-end flow.
 - Replace the Camden fixtures with real borough ETL integrations and extend the `sources` catalogue.
 - Publish patrol events and derived leaderboard deltas through the SSE channel and an eventual Redis pub/sub fan-out.
 - Add automated tests (unit, contract, e2e) once Postgres/Redis Testcontainers are wired into the toolchain.
-
 - Wire up observability (OpenTelemetry, Prometheus, Sentry) per the blueprint.
 
 ## License

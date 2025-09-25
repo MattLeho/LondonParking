@@ -12,7 +12,6 @@
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-
     "prisma": "prisma generate"
   },
   "keywords": [],

@@ -30,7 +30,7 @@ export const fetchOfficerLeaderboard = async (
 ): Promise<OfficerLeaderboardRow[]> => {
   const { borough, since, until } = query;
 
-  const conditions: Prisma.Sql[] = [];
+  const conditions: Prisma.Sql[] = [Prisma.sql`t.geom IS NOT NULL`];
   if (borough) {
     conditions.push(Prisma.sql`t.borough = ${borough}`);
   }
@@ -53,8 +53,10 @@ export const fetchOfficerLeaderboard = async (
       t.issued_at as "issuedAt",
       t.est_min_p as "estMinP",
       t.est_max_p as "estMaxP",
-      ST_Y(t.geom::geometry) as "coordinate.lat",
-      ST_X(t.geom::geometry) as "coordinate.lon"
+      jsonb_build_object(
+        'lat', ST_Y(t.geom::geometry),
+        'lon', ST_X(t.geom::geometry)
+      ) as coordinate
     FROM pcn_ticket t
     ${whereClause}
     ORDER BY t.borough, DATE_TRUNC('day', t.issued_at), t.issued_at

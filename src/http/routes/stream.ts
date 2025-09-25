@@ -20,6 +20,7 @@ export const registerStreamRoutes: FastifyPluginCallback = (app, _opts, done) =>
         'X-Accel-Buffering': 'no',
       });
       reply.hijack();
+
       const send = (event: StreamEventName, data: Record<string, unknown> | string) => {
         reply.raw.write(formatEvent(event, data));
       };
@@ -41,7 +42,6 @@ export const registerStreamRoutes: FastifyPluginCallback = (app, _opts, done) =>
         unsubscribers.forEach((unsubscribe) => {
           unsubscribe();
         });
-
         request.raw.off('close', close);
         request.raw.off('error', close);
       };
